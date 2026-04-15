@@ -1,0 +1,183 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("partner") // admin | partner | nestc_agent
+  company   String?
+  source    String?  // "abtalna" | "wuzzuf" | "direct"
+  webhookUrl String?
+  createdAt DateTime @default(now())
+
+  transactions    Transaction[]  @relation("CreatedBy")
+  assignedTrans   Transaction[]  @relation("AssignedTo")
+  actionHistory   ActionHistory[]
+  documents       Document[]
+  batches         Batch[]        @relation("ClientBatches")
+  assignedBatches Batch[]        @relation("AssignedBatches")
+  scoredCandidates Candidate[]   @relation("ScoredBy")
+}
+
+model Batch {
+  id             String    @id @default(cuid())
+  batchRef       String    @unique   // BST-YYYY-XXXX
+  clientId       String
+  assignedToId   String?
+  status         String    @default("pending")
+  // pending | processing | completed | cancelled
+  source         String    @default("direct")  // abtalna | wuzzuf | direct
+  totalCount     Int       @default(0)
+  processedCount Int       @default(0)
+  priority       String    @default("standard")  // standard | high | urgent
+  notes          String?
+  csvFilename    String?
+  webhookUrl     String?
+  webhookFired   Boolean   @default(false)
+  webhookStatus  Int?
+  submittedAt    DateTime  @default(now())
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  client     User        @relation("ClientBatches", fields: [clientId], references: [id])
+  assignedTo User?       @relation("AssignedBatches", fields: [assignedToId], references: [id])
+  candidates Candidate[]
+}
+
+model Candidate {
+  id              String    @id @default(cuid())
+  batchId         String
+  firstName       String
+  lastName        String
+  middleName      String?
+  dateOfBirth     String?
+  nationalId      String?
+  phone           String?
+  address         String?
+  positionApplied String?
+  status          String    @default("pending")
+  // pending | processing | clear | consider | adverse
+  score           String?   // CLEAR | CONSIDER | ADVERSE
+  scoreNotes      String?
+  scoredAt        DateTime?
+  scoredById      String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  batch    Batch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  scoredBy User? @relation("ScoredBy", fields: [scoredById], references: [id])
+}
+
+model WebhookLog {
+  id         String   @id @default(cuid())
+  batchId    String
+  url        String
+  payload    String
+  statusCode Int?
+  success    Boolean  @default(false)
+  error      String?
+  sentAt     DateTime @default(now())
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  transId       String   @unique
+  subjectType   String   @default("individual")
+  inquiryType   String   @default("employment_screening")
+  firstName     String
+  lastName      String
+  middleName    String?
+  maidenName    String?
+  otherNames    String?
+  birthDate     String?
+  gender        String?
+  title         String?
+  country       String   @default("Egypt")
+  addressLine1  String?
+  addressLine2  String?
+  residencyStart String?
+  residencyEnd  String?
+  clientId      String?
+  source        Boolean  @default(true)
+  status        String   @default("submitted")
+  tat           Int      @default(8)
+  dateOfOrder   DateTime @default(now())
+  createdById   String
+  assignedToId  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdBy     User     @relation("CreatedBy", fields: [createdById], references: [id])
+  assignedTo    User?    @relation("AssignedTo", fields: [assignedToId], references: [id])
+  components    Component[]
+  actionHistory ActionHistory[]
+  documents     Document[]
+}
+
+model Component {
+  id              String   @id @default(cuid())
+  transactionId   String
+  type            String   @default("criminal_history_egypt")
+  serviceId       String   @unique @default(cuid())
+  status          String   @default("in_progress")
+  allocationStatus String  @default("ICVendorNEI")
+  la              String?
+  dla             String?
+  dfa             String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transaction   Transaction     @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  actionHistory ActionHistory[]
+  documents     Document[]
+}
+
+model ActionHistory {
+  id            String   @id @default(cuid())
+  transactionId String
+  componentId   String?
+  userId        String
+  actionType    String
+  actionNote    String?
+  actionTypeId  Int?
+  visibility    String   @default("external")
+  createdAt     DateTime @default(now())
+
+  transaction Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  component   Component?   @relation(fields: [componentId], references: [id])
+  user        User         @relation(fields: [userId], references: [id])
+}
+
+model Document {
+  id            String   @id @default(cuid())
+  transactionId String
+  componentId   String?
+  uploadedById  String
+  name          String
+  fileType      String   @default("PDF")
+  fileSize      Int
+  filePath      String
+  createdAt     DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  component   Component?  @relation(fields: [componentId], references: [id])
+  uploadedBy  User        @relation(fields: [uploadedById], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  body      String
+  country   String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
